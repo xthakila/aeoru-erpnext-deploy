@@ -1,0 +1,149 @@
+# ERPNext v16 — full stack deployment
+#
+# Usage:
+#   docker compose build        # Build ERPNext image from pinned source
+#   docker compose up -d        # Start all services
+#   bash setup.sh               # One-time: create site, install apps
+#
+# After setup, access Frappe Desk at http://localhost:8000
+
+services:
+  # MariaDB
+  erpnext-db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${ERPNEXT_DB_ROOT_PASSWORD:-erpnext_root_pass}
+      MYSQL_DATABASE: erpnext
+    volumes:
+      - db-data:/var/lib/mysql
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --skip-character-set-client-handshake
+      --skip-innodb-read-only-compressed
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # Redis — cache
+  redis-cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-cache:/data
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # Redis — background job queue
+  redis-queue:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-queue:/data
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # ERPNext backend (Gunicorn)
+  erpnext-backend:
+    build: .
+    restart: unless-stopped
+    environment:
+      DB_HOST: erpnext-db
+      DB_PORT: "3306"
+      REDIS_CACHE: redis://redis-cache:6379
+      REDIS_QUEUE: redis://redis-queue:6379
+      SOCKETIO_PORT: "9000"
+    ports:
+      - "${ERPNEXT_PORT:-8000}:8000"
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    depends_on:
+      erpnext-db:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+      redis-queue:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # Short-queue worker
+  worker-short:
+    build: .
+    restart: unless-stopped
+    command: bench worker --queue short
+    environment:
+      DB_HOST: erpnext-db
+      DB_PORT: "3306"
+      REDIS_CACHE: redis://redis-cache:6379
+      REDIS_QUEUE: redis://redis-queue:6379
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    depends_on:
+      - erpnext-backend
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # Long-queue worker
+  worker-long:
+    build: .
+    restart: unless-stopped
+    command: bench worker --queue long
+    environment:
+      DB_HOST: erpnext-db
+      DB_PORT: "3306"
+      REDIS_CACHE: redis://redis-cache:6379
+      REDIS_QUEUE: redis://redis-queue:6379
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    depends_on:
+      - erpnext-backend
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # Scheduler (cron-like periodic tasks)
+  scheduler:
+    build: .
+    restart: unless-stopped
+    command: bench schedule
+    environment:
+      DB_HOST: erpnext-db
+      DB_PORT: "3306"
+      REDIS_CACHE: redis://redis-cache:6379
+      REDIS_QUEUE: redis://redis-queue:6379
+    volumes:
+      - sites:/home/frappe/frappe-bench/sites
+      - logs:/home/frappe/frappe-bench/logs
+    depends_on:
+      - erpnext-backend
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+volumes:
+  db-data:
+  redis-cache:
+  redis-queue:
+  sites:
+  logs:

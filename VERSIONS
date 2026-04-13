@@ -1,0 +1,15 @@
+# Pinned ERPNext dependency versions
+# These are tested and compatible with the Aeoru assessment app connector
+#
+# To upgrade:
+#   1. Check latest tags: git ls-remote --tags https://github.com/frappe/erpnext.git | grep v16
+#   2. Re-clone at new tag:
+#      rm -rf erpnext && git clone --branch v16.X.X --depth 1 https://github.com/frappe/erpnext.git erpnext
+#      rm -rf erpnext/.git erpnext/.github
+#   3. Rebuild: docker compose build
+#   4. Migrate: docker exec erpnext-backend bench --site aeoru.local migrate
+
+frappe=v16.9.0
+erpnext=v16.9.1
+hrms=v16.4.8
+aeoru_erp=v0.1.0
