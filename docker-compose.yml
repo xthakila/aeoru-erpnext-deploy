@@ -66,9 +66,11 @@ services:
       SOCKETIO_PORT: "9000"
     ports:
       - "${ERPNEXT_PORT:-8000}:8000"
+      - "7681:7681"
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
+      - claude-auth:/home/frappe/.claude
     depends_on:
       erpnext-db:
         condition: service_healthy
@@ -147,3 +149,4 @@ volumes:
   redis-queue:
   sites:
   logs:
+  claude-auth:

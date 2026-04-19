@@ -31,6 +31,15 @@ RUN rm -rf /tmp/frappe-src /tmp/erpnext-src /tmp/hrms-src
 # ─── Stage 2: Production image ───────────────────────────────────────────────
 FROM frappe/bench:latest AS production
 
+USER root
+
+# Install Claude Code CLI and ttyd web terminal
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm \
+    && npm install -g @anthropic-ai/claude-code \
+    && curl -sL https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 -o /usr/local/bin/ttyd \
+    && chmod +x /usr/local/bin/ttyd \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 USER frappe
 
 COPY --from=builder --chown=frappe:frappe \
@@ -38,5 +47,5 @@ COPY --from=builder --chown=frappe:frappe \
 
 WORKDIR /home/frappe/frappe-bench
 
-EXPOSE 8000
+EXPOSE 8000 7681
 CMD ["bench", "serve", "--port", "8000"]
