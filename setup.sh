@@ -17,35 +17,55 @@ echo ""
 
 # Wait for MariaDB
 echo "Waiting for MariaDB..."
-until docker exec erpnext-db healthcheck.sh --connect --innodb_initialized 2>/dev/null; do
+until docker compose exec erpnext-db healthcheck.sh --connect --innodb_initialized 2>/dev/null; do
     sleep 2
 done
 echo "MariaDB is ready."
 
+# Configure DB host before creating site
+echo "Configuring database connection..."
+docker compose exec erpnext-backend bench set-config -g db_host erpnext-db
+docker compose exec erpnext-backend bench set-config -g redis_cache redis://redis-cache:6379
+docker compose exec erpnext-backend bench set-config -g redis_queue redis://redis-queue:6379
+
 # Create site
 echo "Creating site $SITE_NAME..."
-docker exec erpnext-backend bench new-site "$SITE_NAME" \
+docker compose exec erpnext-backend bench new-site "$SITE_NAME" \
     --mariadb-root-password="$DB_ROOT_PASSWORD" \
     --admin-password="$ADMIN_PASSWORD" \
-    --no-mariadb-socket
+    --mariadb-user-host-login-scope='%' \
+    --force
 
 # Install apps
 echo "Installing ERPNext..."
-docker exec erpnext-backend bench --site "$SITE_NAME" install-app erpnext
+docker compose exec erpnext-backend bench --site "$SITE_NAME" install-app erpnext
 
 echo "Installing HRMS..."
-docker exec erpnext-backend bench --site "$SITE_NAME" install-app hrms
+docker compose exec erpnext-backend bench --site "$SITE_NAME" install-app hrms
 
-# Install Aeoru custom app
+# Install Aeoru custom apps (skip-assets for apps without frontend assets)
 echo "Installing aeoru_hr custom app..."
-docker exec erpnext-backend bench get-app https://github.com/xthakila/aeoru-erp.git
-docker exec erpnext-backend bench --site "$SITE_NAME" install-app aeoru_hr
+docker compose exec erpnext-backend bench get-app --skip-assets https://github.com/xthakila/aeoru-erp.git
+docker compose exec erpnext-backend bench --site "$SITE_NAME" install-app aeoru_hr
+
+# Install Aeoru AI assistant
+echo "Installing aeoru_ai app..."
+docker compose exec erpnext-backend bench get-app https://github.com/xthakila/erpnext-aeoru-erp-assistant.git
+docker compose exec erpnext-backend pip install -r apps/aeoru_ai/requirements.txt
+docker compose exec erpnext-backend bench --site "$SITE_NAME" install-app aeoru_ai
+docker compose exec erpnext-backend bench build --app aeoru_ai
+
+# Fix .claude directory permissions for Claude Code auth
+docker compose exec erpnext-backend sudo chown -R frappe:frappe /home/frappe/.claude 2>/dev/null || true
+
+# Start ttyd web terminal
+docker compose exec -d erpnext-backend ttyd --port 7681 --writable bash
 
 # Disable telemetry
-docker exec erpnext-backend bench --site "$SITE_NAME" set-config disable_telemetry 1
+docker compose exec erpnext-backend bench --site "$SITE_NAME" set-config disable_telemetry 1
 
 # Set as default site
-docker exec erpnext-backend bench use "$SITE_NAME"
+docker compose exec erpnext-backend bench use "$SITE_NAME"
 
 echo ""
 echo "=== Setup Complete ==="

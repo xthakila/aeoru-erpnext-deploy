@@ -1,35 +1,31 @@
-# ERPNext v16 — built from pinned local source
+# ERPNext v16 — built from GitHub branches
 #
-# Includes: Frappe v16.9.0, ERPNext v16.9.1, HRMS v16.4.8
-# Custom app (aeoru_hr) is installed at runtime via bench get-app
+# Includes: Frappe v16, ERPNext v16, HRMS v16
+# Custom apps (aeoru_hr, aeoru_ai) installed at runtime via setup.sh
 #
 # Build:  docker compose build
 # Start:  docker compose up -d
+# Setup:  bash setup.sh
 
-# ─── Stage 1: Build bench + install apps from local source ───────────────────
-FROM frappe/bench:latest AS builder
+# ─── Stage 1: Build bench + install apps from GitHub ─────────────────────────
+FROM frappe/bench:v5.29.1 AS builder
 
 USER frappe
 
-COPY --chown=frappe:frappe frappe /tmp/frappe-src
 RUN bench init \
-  --frappe-path /tmp/frappe-src \
+  --frappe-branch version-16 \
   --skip-redis-config-generation \
   /home/frappe/frappe-bench
 
 WORKDIR /home/frappe/frappe-bench
 
-COPY --chown=frappe:frappe erpnext /tmp/erpnext-src
-RUN bench get-app file:///tmp/erpnext-src
-
-COPY --chown=frappe:frappe hrms /tmp/hrms-src
-RUN bench get-app file:///tmp/hrms-src
+RUN bench get-app --branch version-16 erpnext
+RUN bench get-app --branch version-16 hrms
 
 RUN bench build --production
-RUN rm -rf /tmp/frappe-src /tmp/erpnext-src /tmp/hrms-src
 
 # ─── Stage 2: Production image ───────────────────────────────────────────────
-FROM frappe/bench:latest AS production
+FROM frappe/bench:v5.29.1 AS production
 
 USER root
 
